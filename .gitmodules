@@ -1,0 +1,3 @@
+[submodule "vendor/jdlint"]
+	path = vendor/jdlint
+	url = https://github.com/SiriusStarr/jdlint.git
