@@ -114,6 +114,40 @@ test('narrow: the path column is dropped, the codes stay', async ($, on) => {
   await ui.unmount()
 })
 
+// Regression: at 60 columns "5 errors" wrapped onto two lines and the lead
+// code was cut in the middle of the strip.
+test('narrow strip: the count stays on one line and the lead code is dropped', async ($, on) => {
+  given(on, { findings: FINDINGS })
+
+  const ui = await $.ui.mount({
+    ...BAND,
+    props: { ...BAND.props, bodyColumns: 60 },
+    surface: 'terminal',
+  })
+  const count = await ui.find({ type: 'Text', text: /3 errors/ })
+
+  expect(count?.text).toBe('3 errors')
+  expect(await ui.find({ type: 'Text', text: /DUPLICATE_ID/ })).toBe(undefined)
+  expect(await ui.find({ type: 'Button', key: 'fix' })).toBeTruthy()
+  await ui.unmount()
+})
+
+// Regression: a first run that failed showed "Problems 0 as of 18:00", the
+// time being the epoch in the person's zone. There was never a good run.
+test('failed before any good run: no count, no time, no fix button', async ($, on) => {
+  given(on, { findings: [], run: 'failed', asOf: 0 })
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...BAND, surface })
+
+    expect(await ui.find({ type: 'Text', text: /Couldn't run jdlint/ })).toBeTruthy()
+    expect(await ui.find({ type: 'Text', text: /as of/ })).toBe(undefined)
+    expect(await ui.find({ type: 'Text', text: /^0$/ })).toBe(undefined)
+    expect(await ui.find({ type: 'Button', key: 'fix' })).toBe(undefined)
+    await ui.unmount()
+  }
+})
+
 test('checking: placeholders in the rows, no count yet', async ($, on) => {
   given(on, { findings: [], run: 'checking', isOpen: true })
 
@@ -127,7 +161,7 @@ test('checking: placeholders in the rows, no count yet', async ($, on) => {
 })
 
 test('failed: the last rows stay, with their age and a short note', async ($, on) => {
-  given(on, { findings: FINDINGS, run: 'failed', asOf: 0, isOpen: true })
+  given(on, { findings: FINDINGS, run: 'failed', asOf: 1_700_000_000_000, isOpen: true })
 
   for (const surface of SURFACES) {
     const ui = await $.ui.mount({ ...BAND, surface })

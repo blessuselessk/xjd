@@ -231,18 +231,20 @@ export const register: Register = on => {
         {isChecking ? (
           <Text dimColor>checking</Text>
         ) : (
-          <Text>
+          <Text wrap="truncate">
             {sum.errors} {sum.errors === 1 ? 'error' : 'errors'}
           </Text>
         )}
         {sum.warnings > 0 && (
-          <Text dimColor>
+          <Text dimColor wrap="truncate">
             {sum.warnings} {sum.warnings === 1 ? 'warning' : 'warnings'}
           </Text>
         )}
-        <Text dimColor wrap="truncate-end">
-          {sum.lead}
-        </Text>
+        {hasPath && (
+          <Text dimColor wrap="truncate-end">
+            {sum.lead}
+          </Text>
+        )}
         <Box flexGrow={1} />
         <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
           fix
@@ -291,13 +293,17 @@ export const register: Register = on => {
       <Box flexDirection="column">
         <Box flexDirection="row" gap={2}>
           <Text bold>Problems</Text>
-          <Text dimColor>{isChecking ? '—' : found.length}</Text>
-          {isFailed && <Text dimColor>as of {time(age)}</Text>}
+          {(isChecking || found.length > 0) && (
+            <Text dimColor>{isChecking ? '—' : found.length}</Text>
+          )}
+          {isFailed && age > 0 && <Text dimColor>as of {time(age)}</Text>}
           <Box flexGrow={1} />
           <Text dimColor>auto-fix off</Text>
-          <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
-            fix
-          </Button>
+          {found.length > 0 && (
+            <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
+              fix
+            </Button>
+          )}
           <Button key="hide" plain dimColor onPress={() => update($, isOpen, () => false)}>
             hide
           </Button>
