@@ -36,6 +36,22 @@ wrong:
 - jdlint. The repo carries it as a submodule: `git clone --recurse-submodules`.
   Or point `XJD_JDLINT` at a `jdlint.py` of your own.
 
+### Install
+
+From GitHub, at the prompt of a terminal session:
+
+```
+/plugin install xjd-lint --marketplace blessuselessk/xjd
+```
+
+From a local clone, in a shell (this also works for the desktop app's local
+sessions):
+
+```
+claude plugin marketplace add /path/to/this/repo
+claude plugin install xjd-lint@xjd
+```
+
 ### Try it
 
 `fixtures/home` is a small broken tree with its `xjd.toml` and jdlint config.

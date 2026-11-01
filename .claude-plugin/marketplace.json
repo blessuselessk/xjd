@@ -1,0 +1,11 @@
+{
+  "name": "xjd",
+  "owner": { "name": "Costa Combat" },
+  "plugins": [
+    {
+      "name": "xjd-lint",
+      "source": "./mods/xjd-lint",
+      "description": "Shows jdlint problems for an XJD (Johnny Decimal) system above the prompt."
+    }
+  ]
+}
