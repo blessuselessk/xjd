@@ -1,0 +1,6 @@
+name = "Fixture"
+
+[checkers.jdlint]
+config = "jdlint.toml"
+watch = ["**"]
+ignore = [".git/**"]

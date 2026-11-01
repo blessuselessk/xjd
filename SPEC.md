@@ -68,6 +68,13 @@ $XJD_DATA_DIRS/
 Settings are looked up in the home's `xjd.toml` first, then the user's. The
 first file that defines a key wins.
 
+### Files that live in the home but are not part of the tree
+
+`xjd.toml` and the checker's own config sit at the top of the home. jdlint
+reports any file at that level that matches no allowed format, so both MUST be
+in the checker's ignore list (for jdlint, `linter.ignore = ["xjd.toml",
+"jdlint.toml"]`). `fixtures/home/jdlint.toml` shows it.
+
 ### Configuration is read-only
 
 Tools MUST NOT write to `xjd.toml` or to checker configs. They are meant to be

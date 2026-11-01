@@ -1,0 +1,6 @@
+{
+  "name": "xjd-lint",
+  "version": "0.1.0",
+  "description": "Shows jdlint problems for an XJD (Johnny Decimal) system above the prompt.",
+  "types": "./types/index.d.ts"
+}

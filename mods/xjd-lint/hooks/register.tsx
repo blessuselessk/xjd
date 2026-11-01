@@ -1,0 +1,322 @@
+import { atom, read, update } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+
+import type { Finding, Home, Run } from '../types'
+import { fingerprint, fixPrompt, parseJdlint, summarize, time } from './lib/findings'
+import { isWatched } from './lib/glob'
+import { list, parseToml, table, text } from './lib/toml'
+
+const home = atom({ plugin: 'xjd-lint', key: 'home' } as const, null as Home | null)
+const findings = atom({ plugin: 'xjd-lint', key: 'findings' } as const, [] as Finding[])
+const run = atom({ plugin: 'xjd-lint', key: 'run' } as const, 'idle' as Run)
+const asOf = atom({ plugin: 'xjd-lint', key: 'asOf' } as const, 0)
+const isOpen = atom({ plugin: 'xjd-lint', key: 'isOpen' } as const, false)
+
+// The code column fits the longest jdlint code, so rows never shift.
+const CODE_COLUMNS = 41
+// Below this width the path column goes first.
+const PATH_MIN_COLUMNS = 70
+const MAX_ROWS = 8
+
+let isRunning = false
+let isDirty = false
+let lastOk = 0
+
+const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+// XJD_HOME first, then the nearest parent of the working directory that
+// holds an xjd.toml. Nothing found, or no checker config, means out of scope.
+const findHome = async ($: EngineInterface): Promise<Home | null> => {
+  let dir: string | undefined
+  const fromEnv = await $.env.get('XJD_HOME')
+
+  if (fromEnv && fromEnv.startsWith('/') && (await $.fs.exists(fromEnv))) {
+    dir = fromEnv.replace(/\/+$/, '')
+  } else {
+    let at: string = await $.session.cwd()
+
+    while (at !== '') {
+      if (await $.fs.exists(`${at}/xjd.toml`)) {
+        dir = at
+        break
+      }
+
+      at = at.slice(0, at.lastIndexOf('/'))
+    }
+  }
+
+  if (dir === undefined) {
+    return null
+  }
+
+  const toml = (await $.fs.exists(`${dir}/xjd.toml`))
+    ? parseToml(await $.fs.read(`${dir}/xjd.toml`))
+    : {}
+  const checker = table(toml, 'checkers', 'jdlint')
+  const config = text(checker, 'config') ?? 'jdlint.toml'
+  const configPath = config.startsWith('/') ? config : `${dir}/${config}`
+
+  if (!(await $.fs.exists(configPath))) {
+    return null
+  }
+
+  return {
+    dir,
+    config: configPath,
+    watch: list(checker, 'watch') ?? ['**'],
+    ignore: list(checker, 'ignore') ?? ['.git/**'],
+  }
+}
+
+const jdlintPath = async ($: EngineInterface): Promise<string> =>
+  (await $.env.get('XJD_JDLINT')) ??
+  `${$.plugin.root}/../../vendor/jdlint/jdlint.py`
+
+// A write that changes nothing would still redraw the readers, so each value
+// is compared first. One function per value: the scan wants each read to name
+// its value outright.
+const setHome = async ($: EngineInterface, next: Home | null): Promise<void> => {
+  if (JSON.stringify(await read($, home)) !== JSON.stringify(next)) {
+    await update($, home, () => next)
+  }
+}
+
+const setFindings = async ($: EngineInterface, next: Finding[]): Promise<void> => {
+  if (fingerprint(await read($, findings)) !== fingerprint(next)) {
+    await update($, findings, () => next)
+  }
+}
+
+const setRun = async ($: EngineInterface, next: Run): Promise<void> => {
+  if ((await read($, run)) !== next) {
+    await update($, run, () => next)
+  }
+}
+
+const setAsOf = async ($: EngineInterface, next: number): Promise<void> => {
+  if ((await read($, asOf)) !== next) {
+    await update($, asOf, () => next)
+  }
+}
+
+// One run at a time. A change that lands during a run asks for one more.
+const lint = async ($: EngineInterface): Promise<void> => {
+  const where = await read($, home)
+
+  if (where === null) {
+    return
+  }
+
+  if (isRunning) {
+    isDirty = true
+
+    return
+  }
+
+  isRunning = true
+
+  try {
+    do {
+      isDirty = false
+
+      // Show the placeholder rows only for the first run, so later runs
+      // do not blink the band.
+      if (lastOk === 0) {
+        await setRun($, 'checking')
+      }
+
+      try {
+        const out = await $.process.run(
+          ['python3', await jdlintPath($), '-c', where.config, '--json'],
+          { cwd: where.dir, timeoutMs: 30000 },
+        )
+        const found = parseJdlint(out.stdout)
+
+        lastOk = await $.clock.now()
+        await setFindings($, found)
+        await setRun($, 'idle')
+      } catch {
+        // Keep the last rows. The band dims them and shows their age.
+        await setAsOf($, lastOk)
+        await setRun($, 'failed')
+      }
+    } while (isDirty)
+  } finally {
+    isRunning = false
+  }
+}
+
+export const register: Register = on => {
+  on('session.start', async ($, e, next) => {
+    await $.command.register({
+      name: 'xjd',
+      description: 'Show or hide the XJD lint problems',
+    })
+    await setHome($, await findHome($))
+    await lint($)
+
+    return next(e)
+  })
+
+  on('command.run', { command: 'xjd' }, async $ => {
+    const open = !(await read($, isOpen))
+    await update($, isOpen, () => open)
+    const found = await read($, findings)
+
+    return { text: found.length === 0 ? 'No problems.' : `${found.length} problems.` }
+  })
+
+  // After a tool that may have changed files in the system, check again.
+  on('tool.call', async ($, e, next) => {
+    const ran = await next(e)
+    const where = await read($, home)
+
+    if (where === null) {
+      return ran
+    }
+
+    const tool = String(e.tool)
+    const file = (e as { file_path?: unknown }).file_path
+    const isChange =
+      tool === 'Bash' ||
+      (FILE_TOOLS.has(tool) &&
+        typeof file === 'string' &&
+        isWatched(where.dir, file, where.watch, where.ignore))
+
+    if (isChange) {
+      await lint($)
+    }
+
+    return ran
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const where = await read($, home)
+    const found = await read($, findings)
+    const status = await read($, run)
+
+    if (e.props.hasSurvey || where === null) {
+      return next(e)
+    }
+
+    const isFailed = status === 'failed'
+    const isChecking = status === 'checking'
+
+    if (found.length === 0 && !isFailed && !isChecking) {
+      return next(e)
+    }
+
+    const open = await read($, isOpen)
+    const age = isFailed ? await read($, asOf) : 0
+    const below = await next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const columns = e.props.bodyColumns ?? 100
+    const hasPath = columns >= PATH_MIN_COLUMNS
+    const sum = summarize(found)
+
+    const bar = (children: unknown) => (
+      <Box flexDirection="row" gap={2}>
+        {children}
+      </Box>
+    )
+
+    const dot = (f: Finding) => (
+      <Box width={1}>
+        <Text color={f.severity === 'error' ? 'error' : 'warning'}>●</Text>
+      </Box>
+    )
+
+    const strip = bar(
+      <Box flexDirection="row" gap={2} flexGrow={1}>
+        {isChecking ? (
+          <Text dimColor>checking</Text>
+        ) : (
+          <Text>
+            {sum.errors} {sum.errors === 1 ? 'error' : 'errors'}
+          </Text>
+        )}
+        {sum.warnings > 0 && (
+          <Text dimColor>
+            {sum.warnings} {sum.warnings === 1 ? 'warning' : 'warnings'}
+          </Text>
+        )}
+        <Text dimColor wrap="truncate-end">
+          {sum.lead}
+        </Text>
+        <Box flexGrow={1} />
+        <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
+          fix
+        </Button>
+        <Button key="details" plain dimColor onPress={() => update($, isOpen, () => true)}>
+          details
+        </Button>
+      </Box>,
+    )
+
+    const rows = found.slice(0, MAX_ROWS).map((f, i) => (
+      <Box key={`${f.code}:${f.path}:${i}`} flexDirection="row" gap={1}>
+        {dot(f)}
+        <Box width={CODE_COLUMNS}>
+          <Text dimColor={isFailed} wrap="truncate-end">
+            {f.code}
+          </Text>
+        </Box>
+        {hasPath && (
+          <Box flexGrow={1}>
+            <Text dimColor wrap="truncate-start">
+              {f.path}
+            </Text>
+          </Box>
+        )}
+      </Box>
+    ))
+
+    const placeholders = [0, 1, 2].map(i => (
+      <Box key={`ph${i}`} flexDirection="row" gap={1}>
+        <Box width={1}>
+          <Text dimColor>●</Text>
+        </Box>
+        <Box width={CODE_COLUMNS}>
+          <Text dimColor>————————————</Text>
+        </Box>
+        {hasPath && (
+          <Box flexGrow={1}>
+            <Text dimColor>——————————————</Text>
+          </Box>
+        )}
+      </Box>
+    ))
+
+    const detail = (
+      <Box flexDirection="column">
+        <Box flexDirection="row" gap={2}>
+          <Text bold>Problems</Text>
+          <Text dimColor>{isChecking ? '—' : found.length}</Text>
+          {isFailed && <Text dimColor>as of {time(age)}</Text>}
+          <Box flexGrow={1} />
+          <Text dimColor>auto-fix off</Text>
+          <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
+            fix
+          </Button>
+          <Button key="hide" plain dimColor onPress={() => update($, isOpen, () => false)}>
+            hide
+          </Button>
+        </Box>
+        {isChecking ? placeholders : rows}
+        {found.length > MAX_ROWS && (
+          <Text dimColor>+{found.length - MAX_ROWS} more</Text>
+        )}
+        {isFailed && (
+          <Text dimColor>Couldn't run jdlint. Trying again on the next change.</Text>
+        )}
+      </Box>
+    )
+
+    return (
+      <Box flexDirection="column">
+        {below}
+        {open || found.length === 0 ? detail : strip}
+      </Box>
+    )
+  })
+}
