@@ -69,6 +69,18 @@ wait_for() {
   local i
   for ((i = 0; i < $1; i++)); do
     if screen | grep -Eq "$2"; then return 0; fi
+    if screen | grep -q "trust this folder"; then
+      if [[ "${XJD_CHECK_TRUST:-}" == 1 ]]; then
+        # The person opted in: trust this folder, as a CI run would.
+        "${TMUX[@]}" send-keys -t "$SESSION" Down Enter
+        sleep 2
+      else
+        echo "  Claude Code does not trust $ROOT yet."
+        echo "  Open it once with claude and accept, or run: XJD_CHECK_TRUST=1 scripts/check.sh"
+        echo "  (that adds this folder to Claude Code's list of trusted folders)"
+        return 2
+      fi
+    fi
     sleep 1
   done
   return 1
