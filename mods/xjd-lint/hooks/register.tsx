@@ -183,8 +183,9 @@ export const register: Register = on => {
         typeof file === 'string' &&
         isWatched(where.dir, file, where.watch, where.ignore))
 
+    // The tool has already run. A broken check must not lose its result.
     if (isChange) {
-      await lint($)
+      await lint($).catch(() => setRun($, 'failed').catch(() => {}))
     }
 
     return ran
