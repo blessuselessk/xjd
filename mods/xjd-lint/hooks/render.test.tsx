@@ -185,3 +185,66 @@ test('a survey wins the band', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /errors/ })).toBe(undefined)
   await ui.unmount()
 })
+
+const FOOTER = {
+  plugin: 'xjd-lint',
+  component: 'SessionMode',
+  props: { modes: [] },
+} as const
+
+test('footer: the count by the model name', async ($, on) => {
+  given(on, { findings: FINDINGS })
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...FOOTER, surface })
+
+    expect((await ui.find({ type: 'Button', key: 'count' }))?.text).toBe('3 errors')
+    await ui.unmount()
+  }
+})
+
+test('footer: clean or out of scope draws nothing', async ($, on) => {
+  given(on, { findings: [] })
+
+  for (const surface of SURFACES) {
+    const ui = await $.ui.mount({ ...FOOTER, surface })
+
+    expect(await ui.find({ type: 'Button', key: 'count' })).toBe(undefined)
+    await ui.unmount()
+  }
+})
+
+test('footer: out of scope draws nothing even with findings stored', async ($, on) => {
+  given(on, { home: null, findings: FINDINGS })
+
+  const ui = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Button', key: 'count' })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('footer: checking shows a placeholder', async ($, on) => {
+  given(on, { findings: [], run: 'checking' })
+
+  const ui = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+
+  expect((await ui.find({ type: 'Button', key: 'count' }))?.text).toBe('…')
+  await ui.unmount()
+})
+
+test('footer: pressing the count opens the list', async ($, on) => {
+  given(on, { findings: FINDINGS })
+  const writes: unknown[] = []
+
+  on('state.set', (_: unknown, e: { key: string; value: unknown }) => {
+    writes.push([e.key, e.value])
+
+    return { value: { isSet: true, version: 2 } }
+  })
+
+  const ui = await $.ui.mount({ ...FOOTER, surface: 'terminal' })
+
+  await ui.press({ key: 'count' })
+  expect(writes).toEqual([['isOpen', true]])
+  await ui.unmount()
+})

@@ -24,6 +24,8 @@ wrong:
 - `fix` puts the problems in the prompt box. You read them and send. Nothing
   is sent for you.
 - `auto-fix` is shown but off. It is not built yet.
+- The footer, by the model name, shows the count too: `● 5 errors`. Press it
+  to open or close the list.
 - When there are no problems, or the session is outside an XJD system, the mod
   draws nothing.
 - If jdlint fails to run, the last results stay, dimmed, with the time of the
@@ -96,7 +98,6 @@ Desktop has not been looked at yet: its Claude Code is 2.1.280.
 
 ### Known issues
 
-- No footer count by the model name yet.
 - jdlint prints no severity or message. The mod calls every jdlint finding an
   error and writes its own short sentence for the common codes.
 - Paths are shown as jdlint reports them. With several roots they are not

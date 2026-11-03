@@ -357,4 +357,44 @@ export const register: Register = on => {
       </Box>
     )
   })
+
+  // The count in the footer, before the mode labels by the model name. It
+  // opens and closes the list, as /xjd does.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    if (await isTooOld($)) {
+      return next(e)
+    }
+
+    const where = (await $.state.get(home)).value ?? null
+    const found = (await $.state.get(findings)).value ?? []
+    const status = (await $.state.get(run)).value ?? 'idle'
+    const isChecking = status === 'checking'
+
+    if (where === null || (found.length === 0 && !isChecking)) {
+      return next(e)
+    }
+
+    const open = (await $.state.get(isOpen)).value ?? false
+    const below = await next(e)
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const sum = summarize(found)
+    const isDim = isChecking || status === 'failed'
+    const label = isChecking
+      ? '…'
+      : sum.errors > 0
+        ? `${sum.errors} ${sum.errors === 1 ? 'error' : 'errors'}`
+        : `${sum.warnings} ${sum.warnings === 1 ? 'warning' : 'warnings'}`
+
+    return (
+      <Box flexDirection="row" gap={1}>
+        <Text dimColor={isDim} color={sum.errors > 0 ? 'error' : 'warning'}>
+          ●
+        </Text>
+        <Button key="count" plain dimColor={isDim} onPress={() => $.state.set(isOpen, !open)}>
+          {label}
+        </Button>
+        {below}
+      </Box>
+    )
+  })
 }
