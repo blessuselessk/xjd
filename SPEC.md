@@ -151,4 +151,5 @@ and any later flake or typix step.
 - TODO: Should `XJD_CONFIG_DIRS` and `XJD_DATA_DIRS` exist at all yet, or wait
   until a second machine or a Nix package needs them? Kept in the draft for now.
 - Should findings carry a stable ID, so the same problem can be tracked
-  between runs?
+  between runs? Proposed in
+  [`proposals/stable-finding-ids.md`](proposals/stable-finding-ids.md).
