@@ -1,4 +1,3 @@
-import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Finding, Home, Run } from '../types'
@@ -6,11 +5,11 @@ import { fingerprint, fixPrompt, parseJdlint, summarize, time } from './lib/find
 import { isWatched } from './lib/glob'
 import { list, parseToml, table, text } from './lib/toml'
 
-const home = atom({ plugin: 'xjd-lint', key: 'home' } as const, null as Home | null)
-const findings = atom({ plugin: 'xjd-lint', key: 'findings' } as const, [] as Finding[])
-const run = atom({ plugin: 'xjd-lint', key: 'run' } as const, 'idle' as Run)
-const asOf = atom({ plugin: 'xjd-lint', key: 'asOf' } as const, 0)
-const isOpen = atom({ plugin: 'xjd-lint', key: 'isOpen' } as const, false)
+const home = { plugin: 'xjd-lint', key: 'home' } as const
+const findings = { plugin: 'xjd-lint', key: 'findings' } as const
+const run = { plugin: 'xjd-lint', key: 'run' } as const
+const asOf = { plugin: 'xjd-lint', key: 'asOf' } as const
+const isOpen = { plugin: 'xjd-lint', key: 'isOpen' } as const
 
 // The code column fits the longest jdlint code, so rows never shift.
 const CODE_COLUMNS = 41
@@ -23,6 +22,19 @@ let isDirty = false
 let lastOk = 0
 
 const FILE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit'])
+
+// Older engines load the mod but have no $.state, which holds everything here.
+// The scan allows $.state only as a call, so try one: a TypeError means none.
+const TOO_OLD = 'Needs Claude Code 2.1.287 or later. Update Claude Code, or the desktop app.'
+const isTooOld = async ($: EngineInterface): Promise<boolean> => {
+  try {
+    await $.state.get(home)
+
+    return false
+  } catch (err) {
+    return err instanceof TypeError
+  }
+}
 
 // XJD_HOME first, then the nearest parent of the working directory that
 // holds an xjd.toml. Nothing found, or no checker config, means out of scope.
@@ -76,32 +88,32 @@ const jdlintPath = async ($: EngineInterface): Promise<string> =>
 // is compared first. One function per value: the scan wants each read to name
 // its value outright.
 const setHome = async ($: EngineInterface, next: Home | null): Promise<void> => {
-  if (JSON.stringify(await read($, home)) !== JSON.stringify(next)) {
-    await update($, home, () => next)
+  if (JSON.stringify((await $.state.get(home)).value ?? null) !== JSON.stringify(next)) {
+    await $.state.set(home, next)
   }
 }
 
 const setFindings = async ($: EngineInterface, next: Finding[]): Promise<void> => {
-  if (fingerprint(await read($, findings)) !== fingerprint(next)) {
-    await update($, findings, () => next)
+  if (fingerprint((await $.state.get(findings)).value ?? []) !== fingerprint(next)) {
+    await $.state.set(findings, next)
   }
 }
 
 const setRun = async ($: EngineInterface, next: Run): Promise<void> => {
-  if ((await read($, run)) !== next) {
-    await update($, run, () => next)
+  if (((await $.state.get(run)).value ?? 'idle') !== next) {
+    await $.state.set(run, next)
   }
 }
 
 const setAsOf = async ($: EngineInterface, next: number): Promise<void> => {
-  if ((await read($, asOf)) !== next) {
-    await update($, asOf, () => next)
+  if (((await $.state.get(asOf)).value ?? 0) !== next) {
+    await $.state.set(asOf, next)
   }
 }
 
 // One run at a time. A change that lands during a run asks for one more.
 const lint = async ($: EngineInterface): Promise<void> => {
-  const where = await read($, home)
+  const where = (await $.state.get(home)).value ?? null
 
   if (where === null) {
     return
@@ -152,6 +164,12 @@ export const register: Register = on => {
       name: 'xjd',
       description: 'Show or hide the XJD lint problems',
     })
+
+    if (await isTooOld($)) {
+      // The host shows a hook's error by the prompt. Here that is the message.
+      throw new Error(TOO_OLD)
+    }
+
     await setHome($, await findHome($))
     await lint($)
 
@@ -159,9 +177,13 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'xjd' }, async $ => {
-    const open = !(await read($, isOpen))
-    await update($, isOpen, () => open)
-    const found = await read($, findings)
+    if (await isTooOld($)) {
+      return { text: TOO_OLD }
+    }
+
+    const open = !((await $.state.get(isOpen)).value ?? false)
+    await $.state.set(isOpen, open)
+    const found = (await $.state.get(findings)).value ?? []
 
     return { text: found.length === 0 ? 'No problems.' : `${found.length} problems.` }
   })
@@ -169,7 +191,12 @@ export const register: Register = on => {
   // After a tool that may have changed files in the system, check again.
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    const where = await read($, home)
+
+    if (await isTooOld($)) {
+      return ran
+    }
+
+    const where = (await $.state.get(home)).value ?? null
 
     if (where === null) {
       return ran
@@ -192,9 +219,13 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const where = await read($, home)
-    const found = await read($, findings)
-    const status = await read($, run)
+    if (await isTooOld($)) {
+      return next(e)
+    }
+
+    const where = (await $.state.get(home)).value ?? null
+    const found = (await $.state.get(findings)).value ?? []
+    const status = (await $.state.get(run)).value ?? 'idle'
 
     if (e.props.hasSurvey || where === null) {
       return next(e)
@@ -207,8 +238,8 @@ export const register: Register = on => {
       return next(e)
     }
 
-    const open = await read($, isOpen)
-    const age = isFailed ? await read($, asOf) : 0
+    const open = (await $.state.get(isOpen)).value ?? false
+    const age = isFailed ? ((await $.state.get(asOf)).value ?? 0) : 0
     const below = await next(e)
     const { Box, Button, Text } = $.ui.resolve(e)
     const columns = e.props.bodyColumns ?? 100
@@ -250,7 +281,7 @@ export const register: Register = on => {
         <Button key="fix" plain dimColor onPress={() => $.prompt.fill({ text: fixPrompt(found) })}>
           fix
         </Button>
-        <Button key="details" plain dimColor onPress={() => update($, isOpen, () => true)}>
+        <Button key="details" plain dimColor onPress={() => $.state.set(isOpen, true)}>
           details
         </Button>
       </Box>,
@@ -305,7 +336,7 @@ export const register: Register = on => {
               fix
             </Button>
           )}
-          <Button key="hide" plain dimColor onPress={() => update($, isOpen, () => false)}>
+          <Button key="hide" plain dimColor onPress={() => $.state.set(isOpen, false)}>
             hide
           </Button>
         </Box>

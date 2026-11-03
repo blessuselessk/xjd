@@ -31,7 +31,9 @@ wrong:
 
 ### Needs
 
-- Claude Code 2.1.287 or later. On 2.1.280 the mod does not load.
+- Claude Code 2.1.287 or later. On older versions the mod says so by the
+  prompt and draws nothing. The desktop app carries its own Claude Code; on
+  2.1.280 it shows that message until the app is updated.
 - Python 3.11 or later, for jdlint.
 - jdlint. The repo carries it as a submodule: `git clone --recurse-submodules`.
   Or point `XJD_JDLINT` at a `jdlint.py` of your own.
@@ -89,7 +91,8 @@ claude plugin test mods/xjd-lint
 
 Both pass. The tests cover jdlint parsing, the config and glob readers, and
 each visible state on terminal and desktop. They do not show how it looks.
-Terminal has been seen working. Desktop has not been looked at yet.
+Terminal has been seen working on 2.1.301, and the too-old message on 2.1.280.
+Desktop has not been looked at yet: its Claude Code is 2.1.280.
 
 ### Known issues
 
