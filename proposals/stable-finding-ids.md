@@ -1,7 +1,7 @@
 # Proposal: stable finding IDs
 
-Status: proposal. Nothing here is built. Answers the open question in
-[`SPEC.md`](../SPEC.md): should findings carry a stable ID?
+Status: the first slice is built. Steps 2 to 4 are not. Answers what was an open
+question in [`SPEC.md`](../SPEC.md): should findings carry a stable ID?
 
 ## Problem
 
@@ -62,11 +62,16 @@ what tells the problems apart. The cost: those findings lose the rename
 protection below. Renaming `11.11 Me` changes the ID of its `EMPTY_FOLDER`,
 because here the path is the only thing that tells it from `11.11 Dup`.
 
+**Alias.** Fixing `11.11 Dup` ends the collision, so the `EMPTY_FOLDER` at
+`11.11 Me` goes back to the number as its anchor and its ID changes. It is the
+same problem, so each numbered finding also carries the other hash as `alias`.
+A problem counts as seen before if its `id` matches any earlier `id` or `alias`.
+
 The other way to break a tie is a counter, as GitHub code scanning does: the
 first `EMPTY_FOLDER` at `11.11` is `#1`, the second `#2`. A counter survives a
 rename but not a fix: fix `#1` and the old `#2` becomes `#1`, so it looks
-fixed and its neighbour looks new. A fix is the moment an ID most needs to
-hold, so this proposal uses the path.
+fixed and its neighbour looks new, with no way to tell. A fix is the moment an
+ID most needs to hold, so this proposal uses the path and the alias.
 
 ### What it means in practice
 
@@ -89,9 +94,10 @@ only when it is missing. jdlint does not print one.
 
 ## What it enables, in order
 
-1. **New versus existing.** Keep the previous run's IDs. The strip reads
-   `5 errors · 1 new`; new rows get a `new` mark. The footer count does not
-   change.
+1. **New versus existing.** Keep the IDs of the session's first good run. The
+   strip reads `5 errors · 1 new`; new rows get a `new` mark. The footer count
+   does not change. Not the previous run: every Bash command runs the check, so
+   "new" would vanish at the next command.
 2. **Fix confirmed.** After a fix, report the IDs that went away, not just the
    new count.
 3. **Retry cap.** Count fix attempts per ID. After three on the same ID, stop
@@ -108,13 +114,14 @@ Small enough to build and test in one go:
 
 - Add `id` to the finding format in `SPEC.md` and to the `Finding` type.
 - Compute it in `parseJdlint`, with the anchor rules and the collision rule.
-- Keep the previous run's IDs in mod state. Show `· N new` in the strip and a
+- Keep the first good run's IDs in mod state. Show `· N new` in the strip and a
   `new` mark on rows.
-- Use IDs for the "did anything change" check, in place of the whole-list
-  string.
+- Keep the whole-list string for the "did anything change" check. A rename keeps
+  the ID but changes the path, and the row has to redraw.
 - Tests: the fixture's five findings get the expected anchors; a rename keeps
   every ID; the two `EMPTY_FOLDER` findings at `11.11` get different IDs;
-  the same problem in two roots gets two IDs.
+  the same problem in two roots gets two IDs; fixing one of a pair does not make
+  the other look new.
 
 Steps 2 to 4 come after, each on its own.
 
@@ -144,9 +151,8 @@ Sources:
 
 ## Decided
 
-- **The first run of a session counts nothing as new.** With no saved state
-  (before step 4) there is nothing to compare with, and opening a session
-  should not shout.
+- **The first run of a session counts nothing as new.** It is what later runs
+  are compared with, and opening a session should not shout.
 - **The ID ignores `message`.** Rewording a message keeps the ID. Two different
   problems with the same code at the same number cannot happen within one
   jdlint root: each issue is about one file or folder, and each code is

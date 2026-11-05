@@ -24,6 +24,9 @@ wrong:
 - `fix` puts the problems in the prompt box. You read them and send. Nothing
   is sent for you.
 - `auto-fix` is shown but off. It is not built yet.
+- Problems that appeared since the session's first check are counted in the
+  strip (`6 errors · 1 new`) and marked `new` in the list. Renaming a numbered
+  folder does not make its problem new.
 - The footer, by the model name, shows the count too: `● 5 errors`. Press it
   to open or close the list.
 - When there are no problems, or the session is outside an XJD system, the mod

@@ -2,6 +2,8 @@ export type Severity = 'error' | 'warning'
 
 /** One problem, in the shape SPEC.md defines. */
 export type Finding = {
+  id: string
+  alias?: string
   source: string
   code: string
   path: string
@@ -24,6 +26,7 @@ declare module 'claude-code' {
     'xjd-lint': {
       home: Home | null
       findings: Finding[]
+      baseline: string[]
       run: Run
       asOf: number
       isOpen: boolean

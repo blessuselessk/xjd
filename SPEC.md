@@ -118,6 +118,8 @@ adapter turns its `--json` output into findings.
 
 ```json
 {
+  "id": "bc8131b8769eae02f4abd9c74ad38ff9",
+  "alias": "<the same problem's other ID>",
   "source": "jdlint",
   "code": "DUPLICATE_ID",
   "path": "10-19 Life/11 Me/11.11 Me",
@@ -126,6 +128,10 @@ adapter turns its `--json` output into findings.
 }
 ```
 
+- `id`: stays the same for the same problem between runs, so a rename keeps it.
+  How it is made: [`proposals/stable-finding-ids.md`](proposals/stable-finding-ids.md).
+- `alias`: optional. The ID this problem has when findings stop or start sharing
+  its number. To tell whether a problem was seen before, compare with both.
 - `source`: the checker's name.
 - `code`: the checker's own name for the problem. Not renamed, so it matches
   what the checker prints on its own.
@@ -150,6 +156,3 @@ and any later flake or typix step.
   the tool should simply be out of scope until `XJD_HOME` is set?
 - TODO: Should `XJD_CONFIG_DIRS` and `XJD_DATA_DIRS` exist at all yet, or wait
   until a second machine or a Nix package needs them? Kept in the draft for now.
-- Should findings carry a stable ID, so the same problem can be tracked
-  between runs? Proposed in
-  [`proposals/stable-finding-ids.md`](proposals/stable-finding-ids.md).

@@ -7,9 +7,9 @@ const BAND = {
 } as const
 
 const FINDINGS = [
-  { source: 'jdlint', code: 'DUPLICATE_ID', path: '10-19 Life/11 Me/11.11 Me', message: 'x', severity: 'error' },
-  { source: 'jdlint', code: 'EMPTY_FOLDER', path: '20-29 Clients/21 Acme/21.14 Q3 contracts', message: 'x', severity: 'error' },
-  { source: 'jdlint', code: 'JDEX_ARBITRARY_CONTENT_WHERE_NOT_ALLOWED', path: 'jdex.md', message: 'x', severity: 'error' },
+  { id: 'a', source: 'jdlint', code: 'DUPLICATE_ID', path: '10-19 Life/11 Me/11.11 Me', message: 'x', severity: 'error' },
+  { id: 'b', source: 'jdlint', code: 'EMPTY_FOLDER', path: '20-29 Clients/21 Acme/21.14 Q3 contracts', message: 'x', severity: 'error' },
+  { id: 'c', source: 'jdlint', code: 'JDEX_ARBITRARY_CONTENT_WHERE_NOT_ALLOWED', path: 'jdex.md', message: 'x', severity: 'error' },
 ]
 
 const HOME = { dir: '/h', config: '/h/jdlint.toml', watch: ['**'], ignore: [] }
@@ -17,6 +17,7 @@ const HOME = { dir: '/h', config: '/h/jdlint.toml', watch: ['**'], ignore: [] }
 type Values = {
   home?: typeof HOME | null
   findings?: typeof FINDINGS
+  baseline?: string[]
   run?: 'idle' | 'checking' | 'failed'
   asOf?: number
   isOpen?: boolean
@@ -246,5 +247,34 @@ test('footer: pressing the count opens the list', async ($, on) => {
 
   await ui.press({ key: 'count' })
   expect(writes).toEqual([['isOpen', true]])
+  await ui.unmount()
+})
+
+test('new: the strip counts them', async ($, on) => {
+  given(on, { findings: FINDINGS, baseline: ['a', 'b'] })
+
+  for (const surface of SURFACES) {
+    const strip = await $.ui.mount({ ...BAND, surface })
+
+    expect(await strip.find({ type: 'Text', text: /1 new/ })).toBeTruthy()
+    await strip.unmount()
+  }
+})
+
+test('new: none before a baseline', async ($, on) => {
+  given(on, { findings: FINDINGS })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  expect(await ui.find({ type: 'Text', text: /new/ })).toBe(undefined)
+  await ui.unmount()
+})
+
+test('new: the list marks the new row', async ($, on) => {
+  given(on, { findings: FINDINGS, baseline: ['a', 'b'], isOpen: true })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+
+  expect((await ui.find({ type: 'Text', text: /^new$/ }))?.text).toBe('new')
   await ui.unmount()
 })

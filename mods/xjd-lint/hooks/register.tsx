@@ -1,12 +1,13 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Finding, Home, Run } from '../types'
-import { fingerprint, fixPrompt, parseJdlint, summarize, time } from './lib/findings'
+import { fingerprint, fixPrompt, freshIn, idsOf, parseJdlint, summarize, time } from './lib/findings'
 import { isWatched } from './lib/glob'
 import { list, parseToml, table, text } from './lib/toml'
 
 const home = { plugin: 'xjd-lint', key: 'home' } as const
 const findings = { plugin: 'xjd-lint', key: 'findings' } as const
+const baseline = { plugin: 'xjd-lint', key: 'baseline' } as const
 const run = { plugin: 'xjd-lint', key: 'run' } as const
 const asOf = { plugin: 'xjd-lint', key: 'asOf' } as const
 const isOpen = { plugin: 'xjd-lint', key: 'isOpen' } as const
@@ -142,9 +143,16 @@ const lint = async ($: EngineInterface): Promise<void> => {
           ['python3', await jdlintPath($), '-c', where.config, '--json'],
           { cwd: where.dir, timeoutMs: 30000 },
         )
-        const found = parseJdlint(out.stdout)
+        const found = await parseJdlint(out.stdout)
 
         lastOk = await $.clock.now()
+
+        // Every Bash command runs this, so "new" is since the session's first
+        // good run, not since the last one, or it would vanish at once.
+        if ((await $.state.get(baseline)).value === undefined) {
+          await $.state.set(baseline, idsOf(found))
+        }
+
         await setFindings($, found)
         await setRun($, 'idle')
       } catch {
@@ -245,6 +253,7 @@ export const register: Register = on => {
     const columns = e.props.bodyColumns ?? 100
     const hasPath = columns >= PATH_MIN_COLUMNS
     const sum = summarize(found)
+    const fresh = freshIn(found, (await $.state.get(baseline)).value)
 
     const bar = (children: unknown) => (
       <Box flexDirection="row" gap={2}>
@@ -272,6 +281,7 @@ export const register: Register = on => {
             {sum.warnings} {sum.warnings === 1 ? 'warning' : 'warnings'}
           </Text>
         )}
+        {fresh.size > 0 && <Text wrap="truncate">· {fresh.size} new</Text>}
         {hasPath && (
           <Text dimColor wrap="truncate-end">
             {sum.lead}
@@ -302,6 +312,7 @@ export const register: Register = on => {
             </Text>
           </Box>
         )}
+        {fresh.has(f.id) && <Text bold>new</Text>}
       </Box>
     ))
 

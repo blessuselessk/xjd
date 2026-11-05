@@ -19,20 +19,71 @@ const MESSAGES: Record<string, string> = {
 const describe = (code: string): string =>
   MESSAGES[code] ?? code.toLowerCase().replace(/_/g, ' ')
 
-type Raw = { file?: unknown; type?: unknown }
+type Raw = { file?: unknown; id?: unknown; type?: unknown }
+type Draft = Omit<Finding, 'id' | 'alias'> & { root: string; number?: string }
 
-const toFinding = (raw: Raw): Finding | undefined => {
+// shortcut: plain Johnny Decimal numbers only, a custom format anchors on its
+// path and so loses rename protection; widen this if a system needs it.
+const JD_NUMBER = /^(\d\d-\d\d|\d\d\.\d\d|\d\d)(?=\s|$)/
+
+const toDraft = (raw: Raw, root: string): Draft | undefined => {
   if (typeof raw.type !== 'string') {
     return undefined
   }
 
+  const path = typeof raw.file === 'string' ? raw.file : ''
+
   return {
+    root,
+    number: typeof raw.id === 'string' ? raw.id : path.split('/').pop()?.match(JD_NUMBER)?.[1],
     source: SOURCE,
     code: raw.type,
-    path: typeof raw.file === 'string' ? raw.file : '',
+    path,
     message: describe(raw.type),
     severity: 'error',
   }
+}
+
+const keyOf = (d: Draft, anchor: string): string =>
+  [d.source, d.root, d.code, anchor].join('\0')
+
+const hash = async (key: string): Promise<string> => {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
+
+  return [...new Uint8Array(digest)]
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('')
+    .slice(0, 32)
+}
+
+// The number is the ID's anchor, so a rename keeps it. Findings sharing a number
+// are told apart by path, and the other hash stays as `alias`, since the ID
+// flips when one of them is fixed.
+const withIds = async (drafts: Draft[]): Promise<Finding[]> => {
+  const uses = new Map<string, number>()
+
+  for (const d of drafts) {
+    const key = keyOf(d, d.number ?? d.path)
+
+    uses.set(key, (uses.get(key) ?? 0) + 1)
+  }
+
+  return Promise.all(
+    drafts.map(async d => {
+      const { root, number, ...finding } = d
+      const byPath = await hash(keyOf(d, d.path))
+
+      if (number === undefined) {
+        return { id: byPath, ...finding }
+      }
+
+      const byNumber = await hash(keyOf(d, number))
+
+      return (uses.get(keyOf(d, number)) ?? 0) > 1
+        ? { id: byPath, alias: byNumber, ...finding }
+        : { id: byNumber, alias: byPath, ...finding }
+    }),
+  )
 }
 
 const errorsOf = (from: unknown): Raw[] => {
@@ -48,7 +99,7 @@ const errorsOf = (from: unknown): Raw[] => {
 // Turns what `jdlint.py --json` printed into findings. Throws when the text is
 // not JSON or has none of the shape, so the caller can tell a failed run from
 // a clean one.
-export const parseJdlint = (stdout: string): Finding[] => {
+export const parseJdlint = async (stdout: string): Promise<Finding[]> => {
   const json: unknown = JSON.parse(stdout)
 
   if (typeof json !== 'object' || json === null || !('roots' in json)) {
@@ -56,22 +107,26 @@ export const parseJdlint = (stdout: string): Finding[] => {
   }
 
   const { roots, jdex } = json as { roots: unknown; jdex?: unknown }
-  const raws: Raw[] = []
+  const named = typeof roots === 'object' && roots !== null ? Object.entries(roots) : []
+  const raws = named.flatMap(([name, root]) =>
+    errorsOf(root).map(raw => toDraft(raw, named.length > 1 ? name : '')),
+  )
 
-  if (typeof roots === 'object' && roots !== null) {
-    for (const root of Object.values(roots)) {
-      raws.push(...errorsOf(root))
-    }
-  }
+  raws.push(...errorsOf(jdex).map(raw => toDraft(raw, '')))
 
-  raws.push(...errorsOf(jdex))
-
-  return raws.flatMap(raw => {
-    const finding = toFinding(raw)
-
-    return finding ? [finding] : []
-  })
+  return withIds(raws.filter(d => d !== undefined))
 }
+
+// Everything a run's findings are known by: what later runs are compared with.
+export const idsOf = (findings: readonly Finding[]): string[] =>
+  findings.flatMap(f => (f.alias ? [f.id, f.alias] : [f.id]))
+
+// No baseline yet means nothing to compare with, so nothing is new.
+export const freshIn = (
+  findings: readonly Finding[],
+  baseline: readonly string[] | undefined,
+): Set<string> =>
+  new Set(baseline ? findings.map(f => f.id).filter(id => !baseline.includes(id)) : [])
 
 // A change worth a redraw is a change in this string.
 export const fingerprint = (findings: readonly Finding[]): string =>
