@@ -87,6 +87,10 @@ NotebookEdit on a file that matches the watch list. A Bash command can change
 any file, so every one triggers a run. A run that finds nothing new redraws
 nothing.
 
+Only Claude's own tool calls trigger a run. A `!` command you type at the
+prompt, `/reload-plugins`, or a change made outside Claude Code does not: the
+strip catches up at Claude's next Bash or file edit, or the next session.
+
 ### Checks
 
 ```
@@ -105,3 +109,5 @@ Desktop has not been looked at yet: its Claude Code is 2.1.280.
   error and writes its own short sentence for the common codes.
 - Paths are shown as jdlint reports them. With several roots they are not
   prefixed with the root's name.
+- A duplicate ID is one row, at the copy jdlint names first. The other copies
+  are named only in the text `fix` puts in the prompt.
