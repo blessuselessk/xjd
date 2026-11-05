@@ -37,7 +37,7 @@ test('jdlint output becomes findings in the spec shape', async () => {
     source: 'jdlint',
     code: 'DUPLICATE_ID',
     path: '10-19 Life/11 Me/11.11 Dup',
-    message: 'the ID is used more than once',
+    message: 'the ID is used more than once (also "10-19 Life/11 Me/11.11 Me")',
     severity: 'error',
   })
 })

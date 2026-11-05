@@ -19,7 +19,7 @@ const MESSAGES: Record<string, string> = {
 const describe = (code: string): string =>
   MESSAGES[code] ?? code.toLowerCase().replace(/_/g, ' ')
 
-type Raw = { file?: unknown; id?: unknown; type?: unknown }
+type Raw = { file?: unknown; files?: unknown; id?: unknown; type?: unknown }
 type Draft = Omit<Finding, 'id' | 'alias'> & { root: string; number?: string }
 
 // shortcut: plain Johnny Decimal numbers only, a custom format anchors on its
@@ -32,6 +32,10 @@ const toDraft = (raw: Raw, root: string): Draft | undefined => {
   }
 
   const path = typeof raw.file === 'string' ? raw.file : ''
+  // DUPLICATE_ID names one folder as `file` and every copy in `files`.
+  const others = Array.isArray(raw.files)
+    ? raw.files.filter((f): f is string => typeof f === 'string' && f !== path)
+    : []
 
   return {
     root,
@@ -39,7 +43,10 @@ const toDraft = (raw: Raw, root: string): Draft | undefined => {
     source: SOURCE,
     code: raw.type,
     path,
-    message: describe(raw.type),
+    message:
+      others.length > 0
+        ? `${describe(raw.type)} (also ${others.map(f => `"${f}"`).join(', ')})`
+        : describe(raw.type),
     severity: 'error',
   }
 }
