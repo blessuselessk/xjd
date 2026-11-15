@@ -111,3 +111,10 @@ Desktop has not been looked at yet: its Claude Code is 2.1.280.
   prefixed with the root's name.
 - A duplicate ID is one row, at the copy jdlint names first. The other copies
   are named only in the text `fix` puts in the prompt.
+
+## Licence
+
+Copyright © 2026 Ash. Licensed under the
+[GNU Affero General Public License v3.0 only](LICENSE) (`AGPL-3.0-only`).
+
+`vendor/jdlint` is a git submodule pointing at [jdlint](https://github.com/SiriusStarr/jdlint), which keeps its own licence.
